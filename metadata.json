@@ -1,0 +1,7 @@
+{
+  "name": "Health-In-Check",
+  "description": "AI-powered food chemistry watchdog that analyzes ingredients, detects hazards, provides USDA data, and suggests healthier substitutions.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
