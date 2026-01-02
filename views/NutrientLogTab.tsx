@@ -109,7 +109,7 @@ const NutrientLogTab: React.FC<NutrientLogTabProps> = ({ onShowSubscription }) =
     }
     const check = await canPerformAction('GENERATE');
     if (!check.allowed) {
-        alert("Daily analysis limit reached. Upgrade to Premium.");
+        alert("Daily analysis limit reached. Upgrade to Standard.");
         onShowSubscription();
         return;
     }

@@ -35,7 +35,7 @@ const SubscriptionView: React.FC<SubscriptionViewProps> = ({ onClose }) => {
     const plan = PLANS[tier];
     const isCurrent = currentTier === tier;
     const isUltra = tier === UserTier.ULTRA;
-    const isPremium = tier === UserTier.PREMIUM;
+    const isStandard = tier === UserTier.STANDARD;
 
     return (
       <div 
@@ -56,7 +56,7 @@ const SubscriptionView: React.FC<SubscriptionViewProps> = ({ onClose }) => {
         
         <div className="flex items-center gap-3 mb-2">
           {tier === UserTier.FREE && <div className="p-2 bg-slate-800 rounded-lg"><Check className="w-5 h-5 text-slate-400"/></div>}
-          {isPremium && <div className="p-2 bg-emerald-500/20 rounded-lg"><Star className="w-5 h-5 text-emerald-400"/></div>}
+          {isStandard && <div className="p-2 bg-emerald-500/20 rounded-lg"><Star className="w-5 h-5 text-emerald-400"/></div>}
           {isUltra && <div className="p-2 bg-purple-500/20 rounded-lg"><Crown className="w-5 h-5 text-purple-400"/></div>}
           
           <div>
@@ -112,7 +112,7 @@ const SubscriptionView: React.FC<SubscriptionViewProps> = ({ onClose }) => {
 
         <div className="grid md:grid-cols-3 gap-6 pb-20">
            {renderCard(UserTier.FREE)}
-           {renderCard(UserTier.PREMIUM)}
+           {renderCard(UserTier.STANDARD)}
            {renderCard(UserTier.ULTRA)}
         </div>
 
