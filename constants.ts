@@ -17,9 +17,9 @@ export const PLANS: Record<UserTier, SubscriptionPlan> = {
       "Contains Ads"
     ]
   },
-  [UserTier.PREMIUM]: {
-    id: UserTier.PREMIUM,
-    name: "Pro Wellness",
+  [UserTier.STANDARD]: {
+    id: UserTier.STANDARD,
+    name: "Standard",
     price: "$4.99/mo",
     priceValue: 4.99,
     scansPerDay: 20,

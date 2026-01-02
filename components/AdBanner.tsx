@@ -17,7 +17,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ userTier }) => {
           <div className="flex flex-col">
              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest border border-slate-600 px-1 inline-block w-fit mb-1">Ad</span>
              <p className="text-xs text-slate-300">
-               Support us! <span className="text-emerald-400 font-bold">Upgrade to Premium</span> to remove ads and get unlimited scans.
+               Support us! <span className="text-emerald-400 font-bold">Upgrade to Standard</span> to remove ads and get unlimited scans.
              </p>
           </div>
           <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-1 px-3 rounded shadow">

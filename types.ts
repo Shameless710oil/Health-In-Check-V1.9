@@ -96,7 +96,7 @@ export type HealthGoal = 'General Health' | 'Weight Loss' | 'Muscle Gain' | 'End
 
 export enum UserTier {
   FREE = 'FREE',
-  PREMIUM = 'PREMIUM',
+  STANDARD = 'STANDARD',
   ULTRA = 'ULTRA'
 }
 
