@@ -4,13 +4,14 @@ import { ShieldAlert, Key, Database, Globe, Copy, CheckCircle2 } from 'lucide-re
 
 const SetupGuide: React.FC = () => {
   const envVars = [
-    {
-      name: 'API_KEY',
-      label: 'Google Gemini API Key',
-      desc: 'Required for AI analysis.',
-      found: !!process.env.API_KEY,
-      url: 'https://aistudio.google.com/app/apikey'
-    },
+    // API_KEY is now handled server-side and not exposed to the client.
+    // {
+    //   name: 'API_KEY',
+    //   label: 'Google Gemini API Key',
+    //   desc: 'Required for AI analysis.',
+    //   found: !!process.env.API_KEY,
+    //   url: 'https://aistudio.google.com/app/apikey'
+    // },
     {
       name: 'SUPABASE_URL',
       label: 'Supabase Project URL',

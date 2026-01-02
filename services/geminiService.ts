@@ -1,15 +1,48 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Type, Schema } from "@google/genai";
 import { KNOWLEDGE_BASE } from "../constants";
 import { AnalysisReport, MealRecommendation, WorkoutRecommendation, UserProfile, DailyFoodLog, DayAnalysis, ParsedIngredients, RecallFeedItem, ReportPeriod, PeriodReport } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Removed Client-side SDK initialization to prevent API Key exposure.
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
 const TEXT_MODEL = "gemini-3-flash-preview";
 const PRO_MODEL = "gemini-3-pro-preview";
 
-// Helper for non-hook logging (standard console mirrored to telemetry provider if initialized)
+// Helper for non-hook logging
 const logAgentAction = (step: string, data?: any) => {
   console.log(`%c[AGENT] %c${step}`, 'color: #22d3ee; font-weight: bold;', '', data || '');
+};
+
+/**
+ * Calls the secure Vercel Serverless Function to interface with Gemini.
+ */
+const callAIEndpoint = async (model: string, contents: any, config?: any) => {
+  try {
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        contents,
+        config
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    // Simulate the structure returned by the SDK's response.text getter
+    return { text: data.text };
+  } catch (error) {
+    console.error("Secure AI Endpoint Call Failed:", error);
+    throw error;
+  }
 };
 
 // --- AGENT 1: OCR & Ingredient Extraction ---
@@ -33,16 +66,16 @@ export const runOCRAgent = async (imageBase64: string, localQrData: string | nul
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
-      contents: {
+    const response = await callAIEndpoint(
+      TEXT_MODEL,
+      {
         parts: [
           { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
           { text: prompt }
         ]
       },
-      config: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
-    });
+      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
+    );
 
     const result = JSON.parse(response.text || "{}");
     logAgentAction("OCR Extraction Complete", { count: result.ingredients?.length });
@@ -125,11 +158,11 @@ export const runAnalysisAgent = async (ingredients: string[], qrData?: string, u
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: PRO_MODEL,
-      contents: { text: prompt },
-      config: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.2 }
-    });
+    const response = await callAIEndpoint(
+      PRO_MODEL,
+      { text: prompt },
+      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.2 }
+    );
 
     const report = JSON.parse(response.text || "{}");
     logAgentAction("Toxicology Report Synthesized", { score: report.overall_score });
@@ -171,11 +204,11 @@ export const runRecallFeedAgent = async (): Promise<RecallFeedItem[]> => {
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
-      contents: { text: prompt },
-      config: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.5 }
-    });
+    const response = await callAIEndpoint(
+      TEXT_MODEL,
+      { text: prompt },
+      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.5 }
+    );
     const items = JSON.parse(response.text || "[]");
     logAgentAction("Recall Feed Updated", { count: items.length });
     return items;
@@ -187,11 +220,11 @@ export const runRecallFeedAgent = async (): Promise<RecallFeedItem[]> => {
 
 export const runMealAgent = async (profile: UserProfile): Promise<MealRecommendation> => {
     logAgentAction("Generating Nutritional Recommendation");
-    const response = await ai.models.generateContent({
-        model: TEXT_MODEL,
-        contents: { text: `Suggest healthy meal for ${profile.goal} with allergies ${profile.allergies} for the Health-In-Check app. Format as JSON with name, description, ingredients (array), calories_approx, benefits.` },
-        config: { responseMimeType: "application/json" }
-    });
+    const response = await callAIEndpoint(
+        TEXT_MODEL,
+        { text: `Suggest healthy meal for ${profile.goal} with allergies ${profile.allergies} for the Health-In-Check app. Format as JSON with name, description, ingredients (array), calories_approx, benefits.` },
+        { responseMimeType: "application/json" }
+    );
     return JSON.parse(response.text || "{}");
 };
 
@@ -232,31 +265,31 @@ export const runFitnessAgent = async (profile: UserProfile): Promise<WorkoutReco
       required: ["title", "duration", "exercises"]
     };
 
-    const response = await ai.models.generateContent({
-        model: TEXT_MODEL,
-        contents: { text: prompt },
-        config: { responseMimeType: "application/json", responseSchema: schema }
-    });
+    const response = await callAIEndpoint(
+        TEXT_MODEL,
+        { text: prompt },
+        { responseMimeType: "application/json", responseSchema: schema }
+    );
     return JSON.parse(response.text || "{}");
 };
 
 export const runIngredientParserAgent = async (log: DailyFoodLog): Promise<ParsedIngredients> => {
     logAgentAction("Parsing Log Ingredients");
-    const response = await ai.models.generateContent({
-        model: TEXT_MODEL,
-        contents: { text: `Parse ingredients from this meal log: ${JSON.stringify(log)}. Return JSON with breakfast, lunch, dinner, snack arrays for Health-In-Check analysis.` },
-        config: { responseMimeType: "application/json" }
-    });
+    const response = await callAIEndpoint(
+        TEXT_MODEL,
+        { text: `Parse ingredients from this meal log: ${JSON.stringify(log)}. Return JSON with breakfast, lunch, dinner, snack arrays for Health-In-Check analysis.` },
+        { responseMimeType: "application/json" }
+    );
     return JSON.parse(response.text || "{}");
 };
 
 export const runNutrientLogAgent = async (log: DailyFoodLog, profile: UserProfile): Promise<DayAnalysis> => {
     logAgentAction("Conducting Intake Synthesis");
-    const response = await ai.models.generateContent({
-        model: PRO_MODEL,
-        contents: { text: `Analyze intake for Health-In-Check: ${JSON.stringify(log)} for goal ${profile.goal}. Return detailed nutritional analysis including macro_breakdown (protein, carbs, fats as strings), nutrients_received, nutrients_missing, recommendations, overall_quality_score, summary. Ensure macro_breakdown object is present.` },
-        config: { responseMimeType: "application/json" }
-    });
+    const response = await callAIEndpoint(
+        PRO_MODEL,
+        { text: `Analyze intake for Health-In-Check: ${JSON.stringify(log)} for goal ${profile.goal}. Return detailed nutritional analysis including macro_breakdown (protein, carbs, fats as strings), nutrients_received, nutrients_missing, recommendations, overall_quality_score, summary. Ensure macro_breakdown object is present.` },
+        { responseMimeType: "application/json" }
+    );
     return JSON.parse(response.text || "{}");
 };
 
@@ -316,11 +349,11 @@ export const runPeriodSummaryAgent = async (logs: DailyFoodLog[], periodType: Re
     };
 
     try {
-      const response = await ai.models.generateContent({
-        model: PRO_MODEL,
-        contents: { text: prompt },
-        config: { responseMimeType: "application/json", responseSchema: schema }
-      });
+      const response = await callAIEndpoint(
+        PRO_MODEL,
+        { text: prompt },
+        { responseMimeType: "application/json", responseSchema: schema }
+      );
       return JSON.parse(response.text || "{}");
     } catch (error) {
        logAgentAction("Period Summary Agent Failed", error);
