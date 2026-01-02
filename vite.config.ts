@@ -11,8 +11,12 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // REMOVED GEMINI KEYS to prevent client-side exposure.
+        // These are now handled by the Vercel serverless function in /api/generate.ts
+        // 'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // 'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+
+        // Supabase keys are safe to expose (Anon Key) if RLS is configured.
         'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY),
       },

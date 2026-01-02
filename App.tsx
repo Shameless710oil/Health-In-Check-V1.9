@@ -29,7 +29,9 @@ const App: React.FC = () => {
   const { setIsConsoleOpen, log } = useTelemetry();
 
   // Check for critical keys
-  const hasEnvVars = !!process.env.API_KEY && isSupabaseConfigured;
+  // Note: API_KEY is no longer checked here as it is hidden in the backend.
+  // We assume the backend is configured correctly.
+  const hasEnvVars = isSupabaseConfigured;
 
   // Secret Gesture Logic
   const tapCount = useRef(0);
