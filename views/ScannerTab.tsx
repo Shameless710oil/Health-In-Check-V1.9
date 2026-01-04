@@ -4,7 +4,8 @@ import { AppState, AnalysisReport, HistoryEntry, RecallFeedItem, UserProfile } f
 import Scanner from '../components/Scanner';
 import Report from '../components/Report';
 import SystemInfo from '../components/SystemInfo';
-import { runOCRAgent, runAnalysisAgent, runRecallFeedAgent } from '../services/geminiService';
+import { runOCRAgent, runAnalysisAgent } from '../services/geminiService';
+import { fetchRealRecalls } from '../services/recallService';
 import { getHistory, saveReport, getUserProfile } from '../services/storageService';
 import { canPerformAction, incrementUsage } from '../services/authService';
 import { FlaskConical, History, Clock, ArrowRight, Lock, Info, Siren, ChevronRight, Cloud, Sparkles, ShieldCheck } from 'lucide-react';
@@ -37,7 +38,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ onShowSubscription }) => {
   }, [appState]);
 
   const loadSafetyBulletin = async () => {
-    const recalls = await runRecallFeedAgent();
+    const recalls = await fetchRealRecalls(3);
     if (recalls && recalls.length > 0) {
       setTopRecall(recalls[0]);
     }

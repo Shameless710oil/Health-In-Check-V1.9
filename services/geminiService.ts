@@ -1,7 +1,7 @@
 
 import { Type, Schema } from "@google/genai";
 import { KNOWLEDGE_BASE } from "../constants";
-import { AnalysisReport, MealRecommendation, WorkoutRecommendation, UserProfile, DailyFoodLog, DayAnalysis, ParsedIngredients, RecallFeedItem, ReportPeriod, PeriodReport } from "../types";
+import { AnalysisReport, MealRecommendation, WorkoutRecommendation, UserProfile, DailyFoodLog, DayAnalysis, ParsedIngredients, ReportPeriod, PeriodReport } from "../types";
 
 // Removed Client-side SDK initialization to prevent API Key exposure.
 // const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -170,51 +170,6 @@ export const runAnalysisAgent = async (ingredients: string[], qrData?: string, u
   } catch (error) {
     logAgentAction("Analysis Agent Failed", error);
     throw error;
-  }
-};
-
-// --- AGENT 6: Recall Feed Agent ---
-export const runRecallFeedAgent = async (): Promise<RecallFeedItem[]> => {
-  logAgentAction("Querying Global Recall Bulletin");
-  const prompt = `
-    You are the Safety Database Agent for Health-In-Check. 
-    GENERATE 6 URGENT FOOD RECALLS.
-    CRITICAL: THE CURRENT DATE IS DECEMBER 2025. 
-    ALL RECALL DATES MUST BE BETWEEN DECEMBER 1 2025 AND JANUARY 30 2026.
-    STRICTLY FORBIDDEN: Any date in 2023 or 2024. Use 2025 or 2026 only.
-    Scenarios: Salmonella in nut butters, E. Coli in greens, Listeria in frozen fruit.
-  `;
-
-  const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.STRING },
-        date: { type: Type.STRING },
-        product_type: { type: Type.STRING },
-        brand_names: { type: Type.STRING },
-        hazard: { type: Type.STRING },
-        risk_level: { type: Type.STRING, enum: ["Critical", "High", "Moderate"] },
-        description: { type: Type.STRING },
-        action_required: { type: Type.STRING }
-      },
-      required: ["id", "date", "product_type", "hazard", "risk_level", "description", "action_required"]
-    }
-  };
-
-  try {
-    const response = await callAIEndpoint(
-      TEXT_MODEL,
-      { text: prompt },
-      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.5 }
-    );
-    const items = JSON.parse(response.text || "[]");
-    logAgentAction("Recall Feed Updated", { count: items.length });
-    return items;
-  } catch (error) {
-    logAgentAction("Recall Agent Failed", error);
-    return [];
   }
 };
 

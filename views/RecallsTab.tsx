@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { runRecallFeedAgent } from '../services/geminiService';
+import { fetchRealRecalls } from '../services/recallService';
 import { RecallFeedItem } from '../types';
-import { Siren, AlertTriangle, RefreshCcw, ShieldAlert, AlertOctagon, Info } from 'lucide-react';
+import { Siren, RefreshCcw, ShieldAlert, AlertOctagon, Info } from 'lucide-react';
 
 const RecallsTab: React.FC = () => {
   const [recalls, setRecalls] = useState<RecallFeedItem[]>([]);
@@ -15,7 +15,7 @@ const RecallsTab: React.FC = () => {
   const loadRecalls = async () => {
     setLoading(true);
     try {
-      const data = await runRecallFeedAgent();
+      const data = await fetchRealRecalls();
       setRecalls(data);
     } catch (e) {
       console.error(e);
@@ -117,7 +117,7 @@ const RecallsTab: React.FC = () => {
       
       <div className="mt-8 text-center">
          <p className="text-[10px] text-slate-600">
-            Source: Aggregated Intelligence (FDA/USDA/CDC Simulation)
+            Source: Official OpenFDA Enforcement Reports
          </p>
       </div>
 
