@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { z } from 'zod';
+import DOMPurify from 'dompurify';
 import { UserProfile, HealthGoal, UserTier } from '../types';
 import { getUserProfile, saveUserProfile } from '../services/storageService';
 import { logoutUser } from '../services/authService';
@@ -38,6 +40,16 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
     }
   }, [saved]);
 
+  const profileSchema = z.object({
+    height: z.string().max(20, "Height string too long").optional(),
+    weight: z.number().min(0, "Weight cannot be negative").max(1000, "Invalid weight").optional(),
+    age: z.number().min(0, "Age cannot be negative").max(150, "Invalid age").optional(),
+    goal: z.string().optional(),
+    activityLevel: z.string().optional(),
+    allergies: z.string().max(500, "Too many characters").optional(),
+    medications: z.string().max(500, "Too many characters").optional(),
+  });
+
   const handleChange = (field: keyof UserProfile, value: any) => {
     if (!profile) return;
     setProfile(prev => prev ? ({ ...prev, [field]: value }) : null);
@@ -45,8 +57,32 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
 
   const handleSave = async () => {
     if (!profile) return;
+
+    try {
+      profileSchema.parse({
+        height: profile.height,
+        weight: profile.weight,
+        age: profile.age,
+        goal: profile.goal,
+        activityLevel: profile.activityLevel,
+        allergies: profile.allergies,
+        medications: profile.medications
+      });
+    } catch (e: any) {
+      alert(e.errors?.[0]?.message || "Invalid profile data");
+      return;
+    }
+
+    const sanitizedProfile = {
+      ...profile,
+      height: DOMPurify.sanitize(profile.height || ''),
+      allergies: DOMPurify.sanitize(profile.allergies || ''),
+      medications: DOMPurify.sanitize(profile.medications || '')
+    };
+
     setSaving(true);
-    await saveUserProfile(profile);
+    await saveUserProfile(sanitizedProfile);
+    setProfile(sanitizedProfile);
     setSaving(false);
     setSaved(true);
   };

@@ -1,9 +1,42 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Basic in-memory rate limiting for serverless function (per instance)
+const rateLimitCache = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 20;
+
 export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Rate Limiting Logic
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  const currentTime = Date.now();
+
+  if (!rateLimitCache.has(ip)) {
+    rateLimitCache.set(ip, { count: 1, startTime: currentTime });
+  } else {
+    const rateData = rateLimitCache.get(ip);
+    if (currentTime - rateData.startTime < RATE_LIMIT_WINDOW_MS) {
+      if (rateData.count >= MAX_REQUESTS_PER_WINDOW) {
+        return res.status(429).json({ error: 'Too many requests, please try again later.' });
+      }
+      rateData.count += 1;
+    } else {
+      // Reset window
+      rateLimitCache.set(ip, { count: 1, startTime: currentTime });
+    }
+  }
+
+  // Cleanup old cache entries periodically (1 in 100 requests to save overhead)
+  if (Math.random() < 0.01) {
+    for (const [key, data] of rateLimitCache.entries()) {
+      if (currentTime - data.startTime > RATE_LIMIT_WINDOW_MS) {
+        rateLimitCache.delete(key);
+      }
+    }
   }
 
   try {
@@ -33,15 +66,18 @@ export default async function handler(req, res) {
 
     // The client code uses `response.text` property.
     // The SDK's generateContent returns a GenerateContentResult.
-    // We need to verify if we can serialize it directly.
+    // The response.text property in SDK might be a getter or a function.
+    // The actual text may be in response.text if it's a string, or response.text() if it's a function.
 
-    // To be safe and generic, we return the serializable part.
-    // However, the SDK response object might be complex.
-    // Let's see what the client expects.
-    // Client does: `const result = JSON.parse(response.text || "{}");`
-    // effectively `response.text()` getter in the SDK returns the string.
+    let text = "";
+    if (typeof response.text === 'function') {
+      text = response.text();
+    } else if (typeof response.text === 'string') {
+      text = response.text;
+    } else if (response.candidates && response.candidates[0]?.content?.parts?.[0]?.text) {
+      text = response.candidates[0].content.parts[0].text;
+    }
 
-    const text = response.text(); // Get the text from the response
     return res.status(200).json({ text });
 
   } catch (error) {
