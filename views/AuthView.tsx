@@ -1,5 +1,7 @@
 
 import React, { useState } from 'react';
+import { z } from 'zod';
+import DOMPurify from 'dompurify';
 import { registerUser, loginUser } from '../services/authService';
 import { FlaskConical, ArrowRight, CheckCircle2, Loader2, Sparkles, ShieldCheck, Lock } from 'lucide-react';
 import { PLANS } from '../constants';
@@ -17,29 +19,40 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const authSchema = z.object({
+    email: z.string().email("Invalid email format"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    username: z.string().min(2, "Username must be at least 2 characters").optional(),
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!email) {
-      setError("Email required for node handshake");
+
+    const sanitizedEmail = DOMPurify.sanitize(email);
+    const sanitizedUsername = DOMPurify.sanitize(username);
+
+    try {
+      if (isLogin) {
+        authSchema.parse({ email: sanitizedEmail, password });
+      } else {
+        authSchema.parse({ email: sanitizedEmail, password, username: sanitizedUsername });
+        if (!sanitizedUsername) {
+            setError("Identity name required");
+            return;
+        }
+      }
+    } catch (validationError: any) {
+      setError(validationError.errors[0]?.message || "Validation failed");
       return;
-    }
-    if (!password) {
-        setError("Security key (password) required");
-        return;
     }
 
     setLoading(true);
     try {
       if (isLogin) {
-        await loginUser(email, password);
+        await loginUser(sanitizedEmail, password);
       } else {
-        if (!username) {
-            setError("Identity name required");
-            setLoading(false);
-            return;
-        }
-        await registerUser(email, username, password);
+        await registerUser(sanitizedEmail, sanitizedUsername, password);
       }
       onAuthSuccess();
     } catch (err: any) {

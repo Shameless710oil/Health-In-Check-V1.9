@@ -12,6 +12,14 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
+// Validate Environment
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn(
+    "⚠️ Supabase credentials are missing. The application will fall back to local storage mode or block access.",
+    "Please create a .env.local file using .env.example as a template."
+  );
+}
+
 // Flag to check if we have a valid configuration.
 export const isSupabaseConfigured = 
   !!SUPABASE_URL && 

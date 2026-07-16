@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { z } from 'zod';
+import DOMPurify from 'dompurify';
 import { ChevronLeft, ChevronRight, Save, PieChart, AlertCircle, Leaf, Apple, Utensils, Droplets, Plus, Minus, Target, Mic, BarChart3, Calendar, ArrowRight, Zap, AlertTriangle, TrendingUp } from 'lucide-react';
 import { DailyFoodLog, DayAnalysis, UserProfile, ReportPeriod, PeriodReport } from '../types';
 import { getFoodLog, saveFoodLog, getUserProfile, getLogsForPeriod } from '../services/storageService';
@@ -84,9 +86,17 @@ const NutrientLogTab: React.FC<NutrientLogTabProps> = ({ onShowSubscription }) =
     setActiveInput(null);
   };
 
+  const inputSchema = z.string().max(1000, "Input is too long.");
+
   const handleInputChange = (meal: keyof DailyFoodLog, value: string) => {
-    const updated = { ...log, [meal]: value };
-    setLog(updated);
+    try {
+      inputSchema.parse(value);
+      const sanitizedValue = DOMPurify.sanitize(value);
+      const updated = { ...log, [meal]: sanitizedValue };
+      setLog(updated);
+    } catch (e: any) {
+      alert(e.errors?.[0]?.message || "Invalid input.");
+    }
   };
 
   const handleWaterChange = (change: number) => {

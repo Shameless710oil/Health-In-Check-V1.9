@@ -14,34 +14,63 @@ const logAgentAction = (step: string, data?: any) => {
   console.log(`%c[AGENT] %c${step}`, 'color: #22d3ee; font-weight: bold;', '', data || '');
 };
 
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
- * Calls the secure Vercel Serverless Function to interface with Gemini.
+ * Calls the secure Vercel Serverless Function to interface with Gemini, with exponential backoff.
  */
-const callAIEndpoint = async (model: string, contents: any, config?: any) => {
-  try {
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        contents,
-        config
-      }),
-    });
+const callAIEndpoint = async (model: string, contents: any, config?: any, maxRetries = 3) => {
+  let attempt = 0;
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Server Error: ${response.status}`);
+  while (attempt < maxRetries) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout for API
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          contents,
+          config
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+
+        // Don't retry client errors (4xx) except 429 Too Many Requests
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+            throw new Error(errorData.error || `Client Error: ${response.status}`);
+        }
+
+        throw new Error(errorData.error || `Server Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { text: data.text };
+
+    } catch (error: any) {
+      attempt++;
+      console.warn(`[API] Attempt ${attempt} failed:`, error.message);
+
+      // Stop retrying if we hit the max or if it's a hard client error
+      if (attempt >= maxRetries || error.name === 'AbortError' || (error.message.startsWith('Client Error') && !error.message.includes('429'))) {
+        console.error("Secure AI Endpoint Call Failed completely:", error);
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s...
+      const backoffMs = Math.pow(2, attempt - 1) * 1000;
+      console.log(`[API] Retrying in ${backoffMs}ms...`);
+      await wait(backoffMs);
     }
-
-    const data = await response.json();
-    // Simulate the structure returned by the SDK's response.text getter
-    return { text: data.text };
-  } catch (error) {
-    console.error("Secure AI Endpoint Call Failed:", error);
-    throw error;
   }
 };
 
