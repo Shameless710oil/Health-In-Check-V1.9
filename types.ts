@@ -2,12 +2,12 @@
 export interface Hazard {
   name: string;
   risk_level: string;
-  function: string;
+  function?: string;
   health_impact: string;
-  regulatory_status: string;
+  regulatory_status?: string;
   verdict: string;
-  citation_source: string;
-  citation_url: string;
+  citation_source?: string;
+  citation_url?: string;
 }
 
 export interface PositiveAttribute {
@@ -96,6 +96,7 @@ export type HealthGoal = 'General Health' | 'Weight Loss' | 'Muscle Gain' | 'End
 
 export enum UserTier {
   FREE = 'FREE',
+  PASS = 'PASS',
   STANDARD = 'STANDARD',
   ULTRA = 'ULTRA'
 }
@@ -109,6 +110,8 @@ export interface SubscriptionPlan {
   generationsPerDay: number; // Meals/Workouts
   features: string[];
   adFree: boolean;
+  billingPeriod?: 'free' | 'one_time_30d' | 'monthly';
+  badge?: string;
 }
 
 export interface UsageStats {
@@ -122,6 +125,8 @@ export interface UserProfile {
   email: string;
   username: string;
   tier: UserTier;
+  tierExpiresAt?: number;
+  stripeSessionId?: string;
   
   // Physical Stats
   age: number | '';
@@ -234,6 +239,7 @@ export interface KnowledgeBaseItem {
   verdict: string;
   citation_source?: string;
   citation_url?: string;
+  aliases?: string[];
 }
 
 export interface KnowledgeBase {
