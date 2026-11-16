@@ -1,13 +1,12 @@
-
-import { UserProfile, UserTier, UsageStats } from '../types';
+import { UserTier, UsageStats } from '../types';
 import { PLANS } from '../constants';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { getUserProfile, saveUserProfile } from './storageService';
 
 const USAGE_KEY_PREFIX = 'fci_usage_';
 const MOCK_SESSION_KEY = 'fci_mock_session';
 
 export const isAuthenticated = async (): Promise<boolean> => {
-  // Check for mock session first
   const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
   if (mockSession) return true;
 
@@ -23,7 +22,6 @@ export const isAuthenticated = async (): Promise<boolean> => {
 };
 
 export const registerUser = async (email: string, username: string, password: string) => {
-  // Bypass for Admin/Test emails
   if (email.toLowerCase() === 'admin@health.ai' || email.toLowerCase() === 'admin@test.com') {
     const mockUser = { id: 'admin-bypass-id', email, role: 'authenticated' };
     localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockUser));
@@ -31,10 +29,10 @@ export const registerUser = async (email: string, username: string, password: st
   }
 
   if (!isSupabaseConfigured) throw new Error("Cloud sync not configured. Please add Supabase credentials.");
-  
+
   const { data, error } = await supabase.auth.signUp({
     email,
-    password, 
+    password,
     options: {
       data: { username }
     }
@@ -45,7 +43,6 @@ export const registerUser = async (email: string, username: string, password: st
 };
 
 export const loginUser = async (email: string, password?: string) => {
-  // Bypass for Admin/Test emails
   if (email.toLowerCase() === 'admin@health.ai' || email.toLowerCase() === 'admin@test.com') {
     const mockUser = { id: 'admin-bypass-id', email, role: 'authenticated' };
     localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockUser));
@@ -71,7 +68,7 @@ export const logoutUser = async () => {
       await supabase.auth.signOut();
     } catch (e) {}
   }
-  localStorage.removeItem('fci_auth_user'); 
+  localStorage.removeItem('fci_auth_user');
 };
 
 export const getCurrentUser = async () => {
@@ -90,11 +87,13 @@ export const getCurrentUser = async () => {
 export const getCurrentUserSession = getCurrentUser;
 
 export const updateUserTier = async (tier: UserTier) => {
-  // Handle mock session tier update (just saves to profile storage in storageService)
-  const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-  if (mockSession) return; 
+  const profile = await getUserProfile();
+  const updated = { ...profile, tier };
+  await saveUserProfile(updated);
 
-  if (!isSupabaseConfigured) return;
+  const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
+  if (mockSession || !isSupabaseConfigured) return;
+
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -107,85 +106,58 @@ export const updateUserTier = async (tier: UserTier) => {
 
 const getTodayKey = (email: string) => {
   const today = new Date().toISOString().split('T')[0];
-  return `${USAGE_KEY_PREFIX}${email}_${today}`;
+  return `${USAGE_KEY_PREFIX}${email || 'guest'}_${today}`;
 };
 
 export const getUsageStats = async (): Promise<UsageStats> => {
-  let email = 'guest';
-  
-  const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-  if (mockSession) {
-    email = JSON.parse(mockSession).email;
-  } else if (isSupabaseConfigured) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) email = user.email!;
-    } catch (e) {}
-  }
-  
+  const profile = await getUserProfile();
+  const email = profile.email || 'guest';
   const key = getTodayKey(email);
   const stored = localStorage.getItem(key);
   if (stored) return JSON.parse(stored);
-  
+
   return { date: new Date().toISOString().split('T')[0], scansCount: 0, generationsCount: 0 };
 };
 
-export const canPerformAction = async (action: 'SCAN' | 'GENERATE'): Promise<{ allowed: boolean, limit: number, current: number }> => {
-  let tier = UserTier.FREE;
-  let email = '';
-
-  const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-
-  if (mockSession) {
-    // If Admin Mock, force ULTRA
-    const user = JSON.parse(mockSession);
-    email = user.email;
-    if (email === 'admin@health.ai' || email === 'admin@test.com') {
-        tier = UserTier.ULTRA;
-    } else {
-        // Fallback for other mocks if any
-        tier = UserTier.FREE; 
-    }
-  } else if (isSupabaseConfigured) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        email = user.email!;
-        const { data: profile } = await supabase.from('profiles').select('tier').eq('id', user.id).single();
-        if (profile) tier = (profile.tier as UserTier) || UserTier.FREE;
-      }
-    } catch (e) {}
-  }
-  
-  const plan = PLANS[tier];
+export const canPerformAction = async (
+  action: 'SCAN' | 'GENERATE'
+): Promise<{ allowed: boolean; limit: number; current: number; tier: UserTier }> => {
+  const profile = await getUserProfile();
+  const tier = profile.tier || UserTier.FREE;
+  const plan = PLANS[tier] || PLANS[UserTier.FREE];
   const usage = await getUsageStats();
-  
+
   if (action === 'SCAN') {
-    if (plan.scansPerDay === -1) return { allowed: true, limit: Infinity, current: usage.scansCount };
-    return { allowed: usage.scansCount < plan.scansPerDay, limit: plan.scansPerDay, current: usage.scansCount };
+    if (plan.scansPerDay === -1) {
+      return { allowed: true, limit: Infinity, current: usage.scansCount, tier };
+    }
+    return {
+      allowed: usage.scansCount < plan.scansPerDay,
+      limit: plan.scansPerDay,
+      current: usage.scansCount,
+      tier
+    };
   } else {
-    if (plan.generationsPerDay === -1) return { allowed: true, limit: Infinity, current: usage.generationsCount };
-    return { allowed: usage.generationsCount < plan.generationsPerDay, limit: plan.generationsPerDay, current: usage.generationsCount };
+    if (plan.generationsPerDay === -1) {
+      return { allowed: true, limit: Infinity, current: usage.generationsCount, tier };
+    }
+    return {
+      allowed: usage.generationsCount < plan.generationsPerDay,
+      limit: plan.generationsPerDay,
+      current: usage.generationsCount,
+      tier
+    };
   }
 };
 
 export const incrementUsage = async (action: 'SCAN' | 'GENERATE') => {
-  let email = 'guest';
-  const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-  
-  if (mockSession) {
-      email = JSON.parse(mockSession).email;
-  } else if (isSupabaseConfigured) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) email = user.email!;
-    } catch (e) {}
-  }
-
+  const profile = await getUserProfile();
+  const email = profile.email || 'guest';
   const stats = await getUsageStats();
+
   if (action === 'SCAN') stats.scansCount++;
   else stats.generationsCount++;
-  
+
   const key = getTodayKey(email);
   localStorage.setItem(key, JSON.stringify(stats));
 };

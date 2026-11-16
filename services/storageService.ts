@@ -1,14 +1,11 @@
-
-import { HistoryEntry, AnalysisReport, UserProfile, HealthGoal, UserTier, DailyFoodLog } from '../types';
+import { HistoryEntry, AnalysisReport, UserProfile, UserTier, DailyFoodLog } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const STORAGE_KEY = 'fci_scan_history';
-const AUTH_KEY = 'fci_auth_user'; 
+const AUTH_KEY = 'fci_auth_user';
 const FOOD_LOG_KEY = 'fci_food_log';
 const MAX_HISTORY = 20;
 const MOCK_SESSION_KEY = 'fci_mock_session';
-
-// --- PROFILE MANAGEMENT ---
 
 const DEFAULT_PROFILE: UserProfile = {
   email: '',
@@ -36,17 +33,31 @@ const ADMIN_PROFILE: UserProfile = {
   goal: 'Tone & Sculpt'
 };
 
+function enforcePassExpiry(profile: UserProfile): { profile: UserProfile; expired: boolean } {
+  if (
+    profile.tier === UserTier.PASS &&
+    typeof profile.tierExpiresAt === 'number' &&
+    Date.now() > profile.tierExpiresAt
+  ) {
+    const downgraded: UserProfile = {
+      ...profile,
+      tier: UserTier.FREE
+    };
+    delete downgraded.tierExpiresAt;
+    return { profile: downgraded, expired: true };
+  }
+  return { profile, expired: false };
+}
+
 export const getUserProfile = async (): Promise<UserProfile> => {
-  // Check for mock session first
   const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
   if (mockSession) {
-     const user = JSON.parse(mockSession);
-     if (user.email === 'admin@health.ai' || user.email === 'admin@test.com') {
-        // Return hardcoded Admin profile if not in local storage yet, or merge
-        const stored = localStorage.getItem(`${AUTH_KEY}_${user.email}`);
-        if (stored) return JSON.parse(stored);
-        return { ...ADMIN_PROFILE, email: user.email };
-     }
+    const user = JSON.parse(mockSession);
+    if (user.email === 'admin@health.ai' || user.email === 'admin@test.com') {
+      const stored = localStorage.getItem(`${AUTH_KEY}_${user.email}`);
+      if (stored) return JSON.parse(stored);
+      return { ...ADMIN_PROFILE, email: user.email };
+    }
   }
 
   if (isSupabaseConfigured) {
@@ -58,8 +69,14 @@ export const getUserProfile = async (): Promise<UserProfile> => {
           .select('*')
           .eq('id', user.id)
           .single();
-        
-        if (data && !error) return data as UserProfile;
+
+        if (data && !error) {
+          const checked = enforcePassExpiry(data as UserProfile);
+          if (checked.expired) {
+            await saveUserProfile(checked.profile);
+          }
+          return checked.profile;
+        }
       }
     } catch (e) {
       console.warn("Cloud profile fetch failed", e);
@@ -67,12 +84,20 @@ export const getUserProfile = async (): Promise<UserProfile> => {
   }
 
   const stored = localStorage.getItem(AUTH_KEY);
-  return stored ? JSON.parse(stored) : DEFAULT_PROFILE;
+  const parsed: UserProfile = stored ? { ...DEFAULT_PROFILE, ...JSON.parse(stored) } : { ...DEFAULT_PROFILE };
+  const checked = enforcePassExpiry(parsed);
+  if (checked.expired) {
+    localStorage.setItem(AUTH_KEY, JSON.stringify(checked.profile));
+    if (checked.profile.email) {
+      localStorage.setItem(`${AUTH_KEY}_${checked.profile.email}`, JSON.stringify(checked.profile));
+    }
+  }
+  return checked.profile;
 };
 
 export const saveUserProfile = async (profile: UserProfile): Promise<void> => {
   const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-  
+
   if (!mockSession && isSupabaseConfigured) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -87,11 +112,9 @@ export const saveUserProfile = async (profile: UserProfile): Promise<void> => {
 
   localStorage.setItem(AUTH_KEY, JSON.stringify(profile));
   if (profile.email) {
-     localStorage.setItem(`${AUTH_KEY}_${profile.email}`, JSON.stringify(profile));
+    localStorage.setItem(`${AUTH_KEY}_${profile.email}`, JSON.stringify(profile));
   }
 };
-
-// --- HISTORY MANAGEMENT ---
 
 export const getHistory = async (): Promise<HistoryEntry[]> => {
   if (isSupabaseConfigured && !localStorage.getItem(MOCK_SESSION_KEY)) {
@@ -104,7 +127,7 @@ export const getHistory = async (): Promise<HistoryEntry[]> => {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(MAX_HISTORY);
-        
+
         if (data && !error) return data as unknown as HistoryEntry[];
       }
     } catch (e) {}
@@ -134,13 +157,11 @@ export const saveReport = async (report: AnalysisReport): Promise<void> => {
       }
     } catch (e) {}
   }
-  
+
   const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   const updated = [newEntry, ...current].slice(0, MAX_HISTORY);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 };
-
-// --- FOOD LOG MANAGEMENT ---
 
 export const getFoodLog = async (date: string): Promise<DailyFoodLog> => {
   if (isSupabaseConfigured && !localStorage.getItem(MOCK_SESSION_KEY)) {
@@ -153,7 +174,7 @@ export const getFoodLog = async (date: string): Promise<DailyFoodLog> => {
           .eq('user_id', user.id)
           .eq('log_date', date)
           .single();
-        
+
         if (data && !error) return data as unknown as DailyFoodLog;
       }
     } catch (e) {}
@@ -182,27 +203,16 @@ export const saveFoodLog = async (log: DailyFoodLog): Promise<void> => {
   localStorage.setItem(FOOD_LOG_KEY, JSON.stringify(allLogs));
 };
 
-// --- RANGE LOGS FOR SUMMARY ---
 export const getLogsForPeriod = async (startDate: Date, endDate: Date): Promise<DailyFoodLog[]> => {
-    const logs: DailyFoodLog[] = [];
-    
-    // For local prototype, we iterate the dates and fetch one by one from local storage.
-    // In a real optimized Supabase query, we would use .gte('log_date', start).lte('log_date', end)
-    
-    const current = new Date(startDate);
-    while (current <= endDate) {
-        const dateKey = current.toISOString().split('T')[0];
-        // We reuse getFoodLog which gracefully handles Local/Supabase fallback logic per item
-        // Note: For heavy production, this should be a bulk query.
-        const log = await getFoodLog(dateKey);
-        
-        // Only include days where something was actually logged
-        if (log.breakfast || log.lunch || log.dinner || log.snack) {
-            logs.push(log);
-        }
-        
-        current.setDate(current.getDate() + 1);
+  const logs: DailyFoodLog[] = [];
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dateKey = current.toISOString().split('T')[0];
+    const log = await getFoodLog(dateKey);
+    if (log.breakfast || log.lunch || log.dinner || log.snack) {
+      logs.push(log);
     }
-    
-    return logs;
+    current.setDate(current.getDate() + 1);
+  }
+  return logs;
 };
