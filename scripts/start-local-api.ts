@@ -1,41 +1,55 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import rateLimit from 'express-rate-limit';
-// @ts-ignore
 import generateHandler from '../api/generate';
+import checkoutHandler from '../api/checkout';
 
-// Load environment variables from .env.local
 dotenv.config({ path: '.env.local' });
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// Set up rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per \`window\` (here, per 15 minutes)
-  standardHeaders: true, // Return rate limit info in the \`RateLimit-*\` headers
-  legacyHeaders: false, // Disable the \`X-RateLimit-*\` headers
-  message: { error: 'Too many requests, please try again later.' }
+// Zero-dependency in-memory rate limiter (100 req / 15 min per IP)
+const rateWindows = new Map<string, { count: number; resetAt: number }>();
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_REQ = 100;
+
+app.use('/api', (req, res, next) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local');
+  const now = Date.now();
+  const entry = rateWindows.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateWindows.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return next();
+  }
+  if (entry.count >= MAX_REQ) {
+    return res.status(429).json({ error: 'Too many requests, please try again later.' });
+  }
+  entry.count += 1;
+  return next();
 });
 
-// Apply rate limiting to all /api routes
-app.use('/api', limiter);
-
-// Mimic Vercel's API route handling
 app.post('/api/generate', async (req, res) => {
   try {
-    // Vercel handlers are (req, res) => void | Promise<void>
-    // We pass the express req/res objects directly as they are compatible enough
     await generateHandler(req, res);
   } catch (error) {
-    console.error('Local API Error:', error);
+    console.error('Local API Error (/api/generate):', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal Server Error in Local API' });
+    }
+  }
+});
+
+app.all('/api/checkout', async (req, res) => {
+  try {
+    await checkoutHandler(req, res);
+  } catch (error) {
+    console.error('Local API Error (/api/checkout):', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal Server Error in Local Checkout API' });
     }
   }
 });
