@@ -1,25 +1,15 @@
-
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import * as Sentry from "@sentry/react";
 import App from './App';
 import { TelemetryProvider } from './telemetry/TelemetryProvider';
 
-Sentry.init({
-  dsn: "YOUR_SENTRY_DSN", // Replace with your Sentry DSN
-  integrations: [
-    Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration({
-      maskAllText: false,
-      blockAllMedia: false,
-    }),
-  ],
-  // Performance Monitoring
-  tracesSampleRate: 1.0,
-  // Session Replay
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
-});
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('ServiceWorker registration skipped:', err);
+    });
+  });
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

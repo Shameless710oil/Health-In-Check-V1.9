@@ -1,0 +1,25 @@
+{
+  "name": "Health-In-Check by @food.chem.intel",
+  "short_name": "HealthInCheck",
+  "description": "AI Food Toxicology, Banned Additive & OpenFDA Recall Watchdog by @food.chem.intel.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%23020617'/%3E%3Crect x='12' y='12' width='168' height='168' rx='36' fill='%2310b981'/%3E%3Ctext x='96' y='132' text-anchor='middle' font-family='sans-serif' font-weight='900' font-style='italic' font-size='112' fill='%23020617'%3EH%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23020617'/%3E%3Crect x='32' y='32' width='448' height='448' rx='96' fill='%2310b981'/%3E%3Ctext x='256' y='352' text-anchor='middle' font-family='sans-serif' font-weight='900' font-style='italic' font-size='296' fill='%23020617'%3EH%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
