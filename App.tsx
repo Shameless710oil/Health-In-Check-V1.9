@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { AppTab, AppState, UserTier, UserProfile } from './types';
+import { AppTab, AppState, UserProfile } from './types';
 import Navigation from './components/Navigation';
 import ScannerTab from './views/ScannerTab';
 import FitnessTab from './views/FitnessTab';
@@ -13,27 +12,21 @@ import SubscriptionView from './views/SubscriptionView';
 import LegalModal from './components/LegalModal';
 import BetaWelcomeModal from './components/BetaWelcomeModal';
 import AdBanner from './components/AdBanner';
-import SetupGuide from './components/SetupGuide'; // Import the guide
 import TelemetryConsole from './telemetry/TelemetryConsole';
 import { useTelemetry } from './telemetry/TelemetryProvider';
-import { isAuthenticated, logoutUser } from './services/authService';
+import { logoutUser } from './services/authService';
 import { getUserProfile } from './services/storageService';
+import { verifyCheckoutReturnFromUrl } from './services/paymentService';
 import { isSupabaseConfigured } from './services/supabaseClient';
 
 const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AppTab>(AppTab.SCANNER);
-  const [appState, setAppState] = useState<AppState>(AppState.PROCESSING); 
+  const [appState, setAppState] = useState<AppState>(AppState.PROCESSING);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [showBetaWelcome, setShowBetaWelcome] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const { setIsConsoleOpen, log } = useTelemetry();
 
-  // Check for critical keys
-  // Note: API_KEY is no longer checked here as it is hidden in the backend.
-  // We assume the backend is configured correctly.
-  const hasEnvVars = isSupabaseConfigured;
-
-  // Secret Gesture Logic
   const tapCount = useRef(0);
   const tapTimer = useRef<number | null>(null);
 
@@ -51,58 +44,44 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // If keys are missing, don't bother checking session
-    if (!hasEnvVars) return;
-
-    const checkSession = async () => {
+    const bootGuestOrSession = async () => {
       try {
-        const authed = await isAuthenticated();
-        if (authed) {
-          const profile = await getUserProfile();
-          setUserProfile(profile);
-          setAppState(AppState.LANDING);
-          log('INFO', 'Session resumed for user', { email: profile.email });
-        } else {
-          setAppState(AppState.AUTH);
+        if (typeof window !== 'undefined' && window.location.search) {
+          await verifyCheckoutReturnFromUrl(window.location.search);
         }
-        
+        const profile = await getUserProfile();
+        setUserProfile(profile);
+        setAppState(AppState.LANDING);
+        log('INFO', 'App booted in frictionless mode', { email: profile.email || 'guest', tier: profile.tier });
+
         const hasAccepted = localStorage.getItem('fci_legal_accepted');
         if (!hasAccepted) setShowLegalModal(true);
-        
-        const hasSeenBeta = sessionStorage.getItem('fci_beta_welcome');
-        if (!hasSeenBeta && !showLegalModal) setShowBetaWelcome(true);
 
+        const hasSeenBeta = sessionStorage.getItem('fci_beta_welcome');
+        if (!hasSeenBeta && hasAccepted) setShowBetaWelcome(true);
       } catch (e) {
         log('ERROR', 'Initial session check failed', e);
-        // Fallback for offline dev
         const profile = await getUserProfile();
         setUserProfile(profile);
         setAppState(AppState.LANDING);
       }
     };
-    checkSession();
-  }, [hasEnvVars]); // Dependency on keys
+    bootGuestOrSession();
+  }, []);
 
   const handleAuthSuccess = async () => {
     const profile = await getUserProfile();
     setUserProfile(profile);
     setAppState(AppState.LANDING);
     log('INFO', 'Authentication successful');
-    
-    const hasAccepted = localStorage.getItem('fci_legal_accepted');
-    if (!hasAccepted) {
-        setShowLegalModal(true);
-    } else {
-        const hasSeenBeta = sessionStorage.getItem('fci_beta_welcome');
-        if (!hasSeenBeta) setShowBetaWelcome(true);
-    }
   };
 
   const handleLogout = async () => {
     await logoutUser();
-    log('INFO', 'User logged out');
-    setAppState(AppState.AUTH);
-    setUserProfile(null);
+    log('INFO', 'User logged out — returning to Guest Mode');
+    const guestProfile = await getUserProfile();
+    setUserProfile(guestProfile);
+    setAppState(AppState.LANDING);
     setCurrentTab(AppTab.SCANNER);
   };
 
@@ -110,35 +89,34 @@ const App: React.FC = () => {
     localStorage.setItem('fci_legal_accepted', 'true');
     setShowLegalModal(false);
     log('INFO', 'Legal disclaimer accepted');
-    
+
     const hasSeenBeta = sessionStorage.getItem('fci_beta_welcome');
     if (!hasSeenBeta) setShowBetaWelcome(true);
   };
 
   const handleCloseBetaWelcome = () => {
-      sessionStorage.setItem('fci_beta_welcome', 'true');
-      setShowBetaWelcome(false);
+    sessionStorage.setItem('fci_beta_welcome', 'true');
+    setShowBetaWelcome(false);
   };
 
-  // 1. If keys are missing, show the Setup Guide immediately
-  if (!hasEnvVars) {
-    return <SetupGuide />;
-  }
+  const handleSubscriptionClose = async () => {
+    const refreshed = await getUserProfile();
+    setUserProfile(refreshed);
+    setAppState(AppState.LANDING);
+  };
 
-  // 2. Loading State
   if (appState === AppState.PROCESSING && !userProfile) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/10 via-transparent to-teal-500/10 opacity-50 animate-pulse"></div>
         <div className="relative z-10 flex flex-col items-center">
-            <div className="w-16 h-16 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-            <p className="mt-6 text-emerald-500 font-black uppercase tracking-[0.4em] text-[10px] drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">Initializing Core</p>
+          <div className="w-16 h-16 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+          <p className="mt-6 text-emerald-500 font-black uppercase tracking-[0.4em] text-[10px] drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">Initializing Core</p>
         </div>
       </div>
     );
   }
 
-  // 3. Auth State
   if (appState === AppState.AUTH) {
     return (
       <>
@@ -148,16 +126,28 @@ const App: React.FC = () => {
     );
   }
 
-  // 4. Main App State
   const renderTab = () => {
     switch (currentTab) {
-      case AppTab.SCANNER: return <ScannerTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
-      case AppTab.LOG: return <NutrientLogTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
-      case AppTab.FITNESS: return <FitnessTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
-      case AppTab.MEALS: return <MealsTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
-      case AppTab.PROFILE: return <ProfileTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} onLogout={handleLogout} />;
-      case AppTab.RECALLS: return <RecallsTab />;
-      default: return <ScannerTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
+      case AppTab.SCANNER:
+        return <ScannerTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
+      case AppTab.LOG:
+        return <NutrientLogTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
+      case AppTab.FITNESS:
+        return <FitnessTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
+      case AppTab.MEALS:
+        return <MealsTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
+      case AppTab.PROFILE:
+        return (
+          <ProfileTab
+            onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)}
+            onLogout={handleLogout}
+            onRequestAuth={() => setAppState(AppState.AUTH)}
+          />
+        );
+      case AppTab.RECALLS:
+        return <RecallsTab />;
+      default:
+        return <ScannerTab onShowSubscription={() => setAppState(AppState.SUBSCRIPTION)} />;
     }
   };
 
@@ -168,7 +158,7 @@ const App: React.FC = () => {
       <TelemetryConsole />
 
       {appState === AppState.SUBSCRIPTION && (
-        <SubscriptionView onClose={() => setAppState(AppState.LANDING)} />
+        <SubscriptionView onClose={handleSubscriptionClose} />
       )}
 
       <header className="p-4 glass sticky top-0 z-40 border-b border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
@@ -179,23 +169,23 @@ const App: React.FC = () => {
             </div>
             <div className="flex flex-col justify-center">
               <div className="flex items-baseline gap-2">
-                 <span className="font-black tracking-tighter text-white leading-none text-xl uppercase italic">Health-In-Check</span>
-                 <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest opacity-80 border border-emerald-500/30 px-1 rounded">Watchdog</span>
+                <span className="font-black tracking-tighter text-white leading-none text-xl uppercase italic">Health-In-Check</span>
+                <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest opacity-80 border border-emerald-500/30 px-1 rounded">@food.chem.intel</span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {!isSupabaseConfigured && (
-              <span className="text-[9px] font-black text-orange-400 border border-orange-400/30 px-2 py-1 rounded-full bg-orange-400/10">
-                OFFLINE
+              <span className="text-[9px] font-black text-teal-300 border border-teal-400/30 px-2 py-1 rounded-full bg-teal-400/10">
+                LOCAL VAULT
               </span>
             )}
-            {userProfile?.tier !== 'FREE' && (
-               <span className="text-[9px] font-black uppercase tracking-[0.25em] bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(20,184,166,0.4)] border border-white/20">
-                 {userProfile?.tier}
-               </span>
+            {userProfile?.tier && userProfile.tier !== 'FREE' && (
+              <span className="text-[9px] font-black uppercase tracking-[0.25em] bg-gradient-to-r from-teal-500 to-emerald-500 text-white px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(20,184,166,0.4)] border border-white/20">
+                {userProfile.tier}
+              </span>
             )}
-            <div className="text-[9px] font-black tracking-widest text-slate-500 bg-white/5 px-2 py-1 rounded-full border border-white/10">BETA 1.9</div>
+            <div className="text-[9px] font-black tracking-widest text-slate-400 bg-white/5 px-2 py-1 rounded-full border border-white/10">V2.0</div>
           </div>
         </div>
       </header>
@@ -203,7 +193,12 @@ const App: React.FC = () => {
       <main className="max-w-4xl mx-auto mb-10 pb-20 relative z-10">{renderTab()}</main>
 
       <div className="fixed bottom-0 left-0 w-full z-40">
-        {userProfile && <AdBanner userTier={userProfile.tier} />}
+        {userProfile && (
+          <AdBanner
+            userTier={userProfile.tier}
+            onUpgrade={() => setAppState(AppState.SUBSCRIPTION)}
+          />
+        )}
         <Navigation currentTab={currentTab} onTabChange={setCurrentTab} />
       </div>
     </div>

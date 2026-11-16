@@ -1,12 +1,27 @@
-
 import React, { useState, useEffect } from 'react';
 import { z } from 'zod';
 import DOMPurify from 'dompurify';
-import { UserProfile, HealthGoal, UserTier } from '../types';
+import { UserProfile, HealthGoal } from '../types';
 import { getUserProfile, saveUserProfile } from '../services/storageService';
 import { logoutUser } from '../services/authService';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 import { PLANS } from '../constants';
-import { User, Ruler, Weight, Activity, Heart, AlertCircle, CheckCircle2, Pill, ShieldAlert, LogOut, CreditCard, Loader2, MessageSquarePlus } from 'lucide-react';
+import {
+  User,
+  Ruler,
+  Weight,
+  Activity,
+  Heart,
+  AlertCircle,
+  CheckCircle2,
+  Pill,
+  ShieldAlert,
+  LogOut,
+  LogIn,
+  CreditCard,
+  Loader2,
+  MessageSquarePlus
+} from 'lucide-react';
 import LegalModal from '../components/LegalModal';
 import BetaFeedbackModal from '../components/BetaFeedbackModal';
 
@@ -16,9 +31,10 @@ const ACTIVITY_LEVELS = ['Sedentary', 'Lightly Active', 'Moderately Active', 'Ve
 interface ProfileTabProps {
   onShowSubscription: () => void;
   onLogout: () => void;
+  onRequestAuth?: () => void;
 }
 
-const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout }) => {
+const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout, onRequestAuth }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,8 +58,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
 
   const profileSchema = z.object({
     height: z.string().max(20, "Height string too long").optional(),
-    weight: z.number().min(0, "Weight cannot be negative").max(1000, "Invalid weight").optional(),
-    age: z.number().min(0, "Age cannot be negative").max(150, "Invalid age").optional(),
+    weight: z.union([z.number().min(0, "Weight cannot be negative").max(1000, "Invalid weight"), z.literal('')]).optional(),
+    age: z.union([z.number().min(0, "Age cannot be negative").max(150, "Invalid age"), z.literal('')]).optional(),
     goal: z.string().optional(),
     activityLevel: z.string().optional(),
     allergies: z.string().max(500, "Too many characters").optional(),
@@ -100,17 +116,19 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
     );
   }
 
+  const isGuest = !profile.email;
+  const currentPlan = PLANS[profile.tier] || PLANS.FREE;
+
   return (
     <div className="pt-8 px-4 pb-24 min-h-screen">
-      
-      <LegalModal 
-        isOpen={showLegal} 
-        onAccept={() => {}} 
+      <LegalModal
+        isOpen={showLegal}
+        onAccept={() => {}}
         isViewOnly={true}
         onClose={() => setShowLegal(false)}
       />
 
-      <BetaFeedbackModal 
+      <BetaFeedbackModal
         isOpen={showFeedback}
         onClose={() => setShowFeedback(false)}
       />
@@ -122,64 +140,77 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white">Your Profile</h2>
-            <p className="text-slate-400 text-xs">{profile.email}</p>
+            <p className="text-slate-400 text-xs">{profile.email || 'Guest Mode (Local Vault)'}</p>
           </div>
         </div>
 
         <div className="space-y-6">
-          
           {/* Account/Subscription Card */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-3 opacity-5">
-                <CreditCard className="w-24 h-24" />
-             </div>
-             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Account & Plan</h3>
-             
-             <div className="flex items-center justify-between mb-4">
-               <div>
-                  <div className="text-sm text-slate-400">Current Plan</div>
-                  <div className="text-xl font-black text-white">{PLANS[profile.tier].name}</div>
-               </div>
-               <button 
-                 onClick={onShowSubscription}
-                 className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-               >
-                 Manage / Upgrade
-               </button>
-             </div>
-             
-             <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 text-xs font-bold hover:text-red-300">
-               <LogOut className="w-3 h-3" /> Sign Out
-             </button>
+            <div className="absolute top-0 right-0 p-3 opacity-5">
+              <CreditCard className="w-24 h-24" />
+            </div>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Account & Plan</h3>
+
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-sm text-slate-400">Current Plan</div>
+                <div className="text-xl font-black text-white">{currentPlan.name}</div>
+              </div>
+              <button
+                onClick={onShowSubscription}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+              >
+                Manage / Upgrade
+              </button>
+            </div>
+
+            {isGuest ? (
+              isSupabaseConfigured && onRequestAuth ? (
+                <button
+                  onClick={onRequestAuth}
+                  className="flex items-center gap-2 text-emerald-400 text-xs font-bold hover:text-emerald-300"
+                >
+                  <LogIn className="w-3.5 h-3.5" /> Sign In / Sync to Cloud
+                </button>
+              ) : (
+                <div className="text-[11px] text-slate-500 font-semibold">
+                  Local Vault Active — Scans & preferences are saved privately on this device.
+                </div>
+              )
+            ) : (
+              <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 text-xs font-bold hover:text-red-300">
+                <LogOut className="w-3 h-3" /> Sign Out
+              </button>
+            )}
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-            
             {/* Stats Row */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    <Ruler className="w-3 h-3" /> Height
-                  </label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 5'10"
-                    value={profile.height}
-                    onChange={(e) => handleChange('height', e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none"
-                  />
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  <Ruler className="w-3 h-3" /> Height
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 5'10"
+                  value={profile.height}
+                  onChange={(e) => handleChange('height', e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none"
+                />
               </div>
               <div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    <Weight className="w-3 h-3" /> Weight (lbs)
-                  </label>
-                  <input 
-                    type="number" 
-                    placeholder="lbs"
-                    value={profile.weight}
-                    onChange={(e) => handleChange('weight', Number(e.target.value))}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none"
-                  />
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  <Weight className="w-3 h-3" /> Weight (lbs)
+                </label>
+                <input
+                  type="number"
+                  placeholder="lbs"
+                  value={profile.weight}
+                  onChange={(e) => handleChange('weight', e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none"
+                />
               </div>
             </div>
 
@@ -187,11 +218,11 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
                 Age
               </label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 placeholder="Years"
                 value={profile.age}
-                onChange={(e) => handleChange('age', Number(e.target.value))}
+                onChange={(e) => handleChange('age', e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none"
               />
             </div>
@@ -207,8 +238,8 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
                     key={g}
                     onClick={() => handleChange('goal', g)}
                     className={`text-xs p-2 rounded-lg border transition-all text-left ${
-                      profile.goal === g 
-                        ? 'bg-orange-500/20 border-orange-500 text-orange-300' 
+                      profile.goal === g
+                        ? 'bg-orange-500/20 border-orange-500 text-orange-300'
                         : 'bg-slate-800 border-slate-700 text-slate-400'
                     }`}
                   >
@@ -223,7 +254,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
               <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                 <Activity className="w-3 h-3" /> Activity Level
               </label>
-              <select 
+              <select
                 value={profile.activityLevel}
                 onChange={(e) => handleChange('activityLevel', e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-orange-500 outline-none appearance-none"
@@ -237,7 +268,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
               <label className="flex items-center gap-2 text-xs font-bold text-red-400 uppercase tracking-wider mb-2">
                 <AlertCircle className="w-3 h-3" /> Allergies / Intolerances
               </label>
-              <textarea 
+              <textarea
                 rows={2}
                 placeholder="e.g. Peanuts, Gluten, Shellfish, Dairy..."
                 value={profile.allergies}
@@ -251,7 +282,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
               <label className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">
                 <Pill className="w-3 h-3" /> Current Medications
               </label>
-              <textarea 
+              <textarea
                 rows={2}
                 placeholder="e.g. Warfarin, Lipitor, MAO Inhibitors..."
                 value={profile.medications}
@@ -263,43 +294,41 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ onShowSubscription, onLogout })
               </p>
             </div>
 
-            <button 
+            <button
               onClick={handleSave}
               disabled={saving}
               className={`w-full py-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all ${
-                saved 
-                ? 'bg-green-600 text-white'
-                : 'bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50'
+                saved
+                  ? 'bg-green-600 text-white'
+                  : 'bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50'
               }`}
             >
               {saving ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : saved ? (
                 <>
-                  <CheckCircle2 className="w-5 h-5" /> Saved to Cloud
+                  <CheckCircle2 className="w-5 h-5" /> Saved
                 </>
               ) : (
                 "Save Profile"
               )}
             </button>
-            
-            {/* BETA FEEDBACK BUTTON */}
-            <button 
-               onClick={() => setShowFeedback(true)}
-               className="w-full py-3 mt-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-emerald-400 text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+
+            <button
+              onClick={() => setShowFeedback(true)}
+              className="w-full py-3 mt-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-emerald-400 text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
             >
               <MessageSquarePlus className="w-4 h-4" />
               Report Bug / Feedback
             </button>
 
-            <button 
+            <button
               onClick={() => setShowLegal(true)}
               className="w-full py-3 mt-2 border border-slate-700 rounded-xl text-slate-400 text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
             >
               <ShieldAlert className="w-4 h-4" />
               View Legal Disclaimer
             </button>
-
           </div>
         </div>
       </div>

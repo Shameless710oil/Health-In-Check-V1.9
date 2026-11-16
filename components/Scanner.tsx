@@ -2,9 +2,10 @@ import React, { useState, useRef } from 'react';
 import { Camera, Upload, ScanLine, X, QrCode } from 'lucide-react';
 
 interface ScannerProps {
-  onScanStart: () => void;
+  onScanStart?: () => void;
   onScanComplete: (imageBase64: string, qrData: string | null) => void;
-  onScanError: (error: string) => void;
+  onScanError?: (error: string) => void;
+  isSubscribed?: boolean;
 }
 
 // Declare jsQR on window since it's loaded via script tag
@@ -59,7 +60,7 @@ const Scanner: React.FC<ScannerProps> = ({ onScanStart, onScanComplete, onScanEr
 
   const processFile = (file: File) => {
     const reader = new FileReader();
-    reader.onloadstart = () => onScanStart();
+    reader.onloadstart = () => onScanStart?.();
     
     reader.onload = async (e) => {
       const result = e.target?.result as string;
@@ -82,7 +83,7 @@ const Scanner: React.FC<ScannerProps> = ({ onScanStart, onScanComplete, onScanEr
       onScanComplete(base64Data, detectedQR);
     };
 
-    reader.onerror = () => onScanError("Failed to read image file.");
+    reader.onerror = () => onScanError?.("Failed to read image file.");
     reader.readAsDataURL(file);
   };
 
