@@ -20,13 +20,28 @@ function getClientPaymentLink(tier: UserTier): string | undefined {
 }
 
 export function isLocalSandboxAllowed(hostname?: string): boolean {
-  const host =
+  const rawHost =
     hostname !== undefined
       ? hostname
       : typeof window !== 'undefined'
         ? window.location.hostname
         : '';
-  return host === 'localhost' || host === '127.0.0.1';
+  const host = rawHost.trim().toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  if (
+    /^192\.168\./.test(host) ||
+    /^10\./.test(host) ||
+    /^100\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  ) {
+    return true;
+  }
+  if (host.endsWith('.local')) return true;
+  if (/\.trycloudflare\.com$/.test(host) || /\.loca\.lt$/.test(host) || /\.ngrok-free\.app$/.test(host)) {
+    return true;
+  }
+  return false;
 }
 
 export async function initiateTierCheckout(

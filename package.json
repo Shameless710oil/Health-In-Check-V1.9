@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "NODE_OPTIONS=--max-old-space-size=256 PORT=3000 tsx scripts/start-local-api.ts",
     "dev:api": "tsx scripts/start-local-api.ts",
     "dev": "concurrently \"npm run dev:api\" \"vite\"",
     "build": "NODE_OPTIONS=--max-old-space-size=512 vite build",

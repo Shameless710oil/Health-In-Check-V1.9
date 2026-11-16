@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { runAnalysisAgent, TEXT_MODEL, PRO_MODEL } from '../services/geminiService';
+import { runOCRAgent, runAnalysisAgent, TEXT_MODEL, PRO_MODEL } from '../services/geminiService';
 import * as recallService from '../services/recallService';
 import { normalizeGeminiModel } from '../api/generate';
 
@@ -56,5 +56,38 @@ describe('Task 2: Hybrid Gemini 2.5 Service & Deterministic Fallback', () => {
     expect(report.hazards.map(h => h.name.toLowerCase())).toEqual(expect.arrayContaining(['red 40', 'sodium nitrite']));
     expect(report.recalls).toEqual([]);
     expect(report.overall_score).toBeLessThan(80);
+  });
+
+  it('bypasses /api/generate when runOCRAgent receives structured JSON ingredients', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ocr = await runOCRAgent(
+      '',
+      JSON.stringify({ productName: 'Neon Nacho Cheese Chips', ingredients: ['Yellow 6', 'Red 40', 'TBHQ'] })
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(ocr).toEqual({
+      productName: 'Neon Nacho Cheese Chips',
+      ingredients: ['Yellow 6', 'Red 40', 'TBHQ'],
+      qrData: undefined
+    });
+  });
+
+  it('returns offline demo OCR fallback when /api/generate is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Offline')));
+
+    const ocr = await runOCRAgent('base64data', 'https://example.com/qr');
+    expect(ocr.productName).toBe('Scanned Grocery Item (Offline OCR Demo)');
+    expect(ocr.ingredients).toEqual([
+      'Enriched Flour (Potassium Bromate)',
+      'High Fructose Corn Syrup',
+      'Red 40',
+      'BHT',
+      'Natural Flavors',
+      'Citric Acid'
+    ]);
+    expect(ocr.qrData).toBe('https://example.com/qr');
   });
 });

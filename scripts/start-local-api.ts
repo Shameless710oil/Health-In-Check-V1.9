@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -7,7 +10,8 @@ import checkoutHandler from '../api/checkout';
 dotenv.config({ path: '.env.local' });
 
 const app = express();
-const PORT = 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = '0.0.0.0';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -54,6 +58,35 @@ app.all('/api/checkout', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Local API server running on http://localhost:${PORT}`);
+const distPath = path.resolve(process.cwd(), 'dist');
+const indexHtmlPath = path.join(distPath, 'index.html');
+if (fs.existsSync(indexHtmlPath)) {
+  app.use(express.static(distPath));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+      return next();
+    }
+    return res.sendFile(indexHtmlPath);
+  });
+}
+
+function getLanIPv4Addresses(): string[] {
+  const interfaces = os.networkInterfaces();
+  const addresses: string[] = [];
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (entry.family === 'IPv4' && !entry.internal) {
+        addresses.push(entry.address);
+      }
+    }
+  }
+  return addresses;
+}
+
+app.listen(PORT, HOST, () => {
+  console.log(`Health-In-Check server listening on http://localhost:${PORT}`);
+  const lanAddresses = getLanIPv4Addresses();
+  for (const addr of lanAddresses) {
+    console.log(`LAN / Mobile URL: http://${addr}:${PORT}`);
+  }
 });

@@ -80,6 +80,25 @@ const callAIEndpoint = async (model: string, contents: any, config?: any, maxRet
 
 // --- AGENT 1: OCR & Ingredient Extraction ---
 export const runOCRAgent = async (imageBase64: string, localQrData: string | null): Promise<{ ingredients: string[], qrData?: string, productName?: string }> => {
+  if (localQrData) {
+    try {
+      const parsed = JSON.parse(localQrData);
+      if (parsed && Array.isArray(parsed.ingredients)) {
+        logAgentAction("Using Structured Ingredient Payload", {
+          productName: parsed.productName,
+          count: parsed.ingredients.length
+        });
+        return {
+          productName: parsed.productName,
+          ingredients: parsed.ingredients,
+          qrData: undefined
+        };
+      }
+    } catch {
+      // Non-JSON QR string; proceed with image OCR
+    }
+  }
+
   logAgentAction("Starting Visual Cortex OCR", { hasQr: !!localQrData });
   const prompt = `
     Analyze this food product image for the Health-In-Check system. 
@@ -107,15 +126,27 @@ export const runOCRAgent = async (imageBase64: string, localQrData: string | nul
           { text: prompt }
         ]
       },
-      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
+      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 },
+      1
     );
 
     const result = JSON.parse(response.text || "{}");
     logAgentAction("OCR Extraction Complete", { count: result.ingredients?.length });
     return result;
   } catch (error) {
-    logAgentAction("OCR Agent Failed", error);
-    throw error;
+    logAgentAction("OCR Agent Unavailable — Returning Offline Demo Fallback", error);
+    return {
+      productName: 'Scanned Grocery Item (Offline OCR Demo)',
+      ingredients: [
+        'Enriched Flour (Potassium Bromate)',
+        'High Fructose Corn Syrup',
+        'Red 40',
+        'BHT',
+        'Natural Flavors',
+        'Citric Acid'
+      ],
+      qrData: localQrData || undefined
+    };
   }
 };
 

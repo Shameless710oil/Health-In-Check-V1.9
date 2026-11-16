@@ -51,6 +51,17 @@ describe('Task 3: 4-Tier Monetization, 30-Day Pass Expiration & Payment Guard', 
   it('blocks local sandbox checkout on production hostnames when Stripe is unconfigured', async () => {
     expect(isLocalSandboxAllowed('localhost')).toBe(true);
     expect(isLocalSandboxAllowed('127.0.0.1')).toBe(true);
+    expect(isLocalSandboxAllowed('192.168.1.42')).toBe(true);
+    expect(isLocalSandboxAllowed('10.0.0.15')).toBe(true);
+    expect(isLocalSandboxAllowed('100.64.1.10')).toBe(true);
+    expect(isLocalSandboxAllowed('172.16.0.5')).toBe(true);
+    expect(isLocalSandboxAllowed('172.31.255.1')).toBe(true);
+    expect(isLocalSandboxAllowed('chromebook.local')).toBe(true);
+    expect(isLocalSandboxAllowed('demo.trycloudflare.com')).toBe(true);
+    expect(isLocalSandboxAllowed('demo.loca.lt')).toBe(true);
+    expect(isLocalSandboxAllowed('demo.ngrok-free.app')).toBe(true);
+    expect(isLocalSandboxAllowed('172.32.0.1')).toBe(false);
+    expect(isLocalSandboxAllowed('192.169.1.1')).toBe(false);
     expect(isLocalSandboxAllowed('app.foodchemintel.com')).toBe(false);
 
     const profile = await getUserProfile();
