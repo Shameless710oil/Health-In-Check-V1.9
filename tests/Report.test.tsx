@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import React from 'react';
 import Report from '../components/Report';
 import { AnalysisReport } from '../types';
@@ -33,5 +33,15 @@ describe('Report Component', () => {
     render(<Report report={mockReport} onNewScan={vi.fn()} onShowSubscription={vi.fn()} />);
 
     expect(screen.getByText(/Spikes insulin/i)).toBeInTheDocument();
+  });
+
+  it('renders Ingredients Read From Label card with extracted ingredient pills', () => {
+    render(<Report report={mockReport} onNewScan={vi.fn()} onShowSubscription={vi.fn()} />);
+
+    const heading = screen.getByText(/Ingredients Read From Label \(2\)/i);
+    expect(heading).toBeInTheDocument();
+    const card = heading.closest('div')!;
+    expect(within(card).getByText('Whey')).toBeInTheDocument();
+    expect(within(card).getByText('Sugar')).toBeInTheDocument();
   });
 });

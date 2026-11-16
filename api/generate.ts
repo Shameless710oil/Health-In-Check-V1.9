@@ -6,10 +6,20 @@ const MAX_REQUESTS_PER_WINDOW = 20;
 
 export function normalizeGeminiModel(model?: string): string {
   const m = String(model || '').trim().toLowerCase();
-  if (!m) return 'gemini-2.5-flash';
-  if (m.includes('pro')) return 'gemini-2.5-pro';
-  if (m.includes('flash-lite')) return 'gemini-2.5-flash-lite';
-  if (m.includes('flash') || m.startsWith('gemini-3')) return 'gemini-2.5-flash';
+  if (!m) return 'gemini-3-flash-preview';
+  if (m === 'gemini-3.8-flash' || m === 'gemini-3.5-flash') return m;
+  if (
+    m === 'gemini-2.5-flash' ||
+    m === 'gemini-2.5-pro' ||
+    m === 'gemini-3-pro-preview' ||
+    m === 'gemini-3-flash-preview' ||
+    m.includes('2.5') ||
+    m.includes('pro') ||
+    m.includes('flash') ||
+    m.startsWith('gemini-3')
+  ) {
+    return 'gemini-3-flash-preview';
+  }
   return model!;
 }
 
@@ -54,24 +64,31 @@ export default async function handler(req: any, res: any) {
 
     const ai = new GoogleGenAI({ apiKey });
     const normalizedModel = normalizeGeminiModel(model);
+    const fallbackChain = Array.from(
+      new Set([normalizedModel, 'gemini-3-flash-preview', 'gemini-3.5-flash', 'gemini-3.8-flash'])
+    );
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: normalizedModel,
-        contents,
-        config
-      });
-    } catch (primaryErr: any) {
-      if (normalizedModel === 'gemini-2.5-pro') {
+    let response: any;
+    let usedModel = normalizedModel;
+    let lastError: any;
+
+    for (const candidateModel of fallbackChain) {
+      try {
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: candidateModel,
           contents,
           config
         });
-      } else {
-        throw primaryErr;
+        usedModel = candidateModel;
+        break;
+      } catch (candidateErr: any) {
+        lastError = candidateErr;
+        console.warn(`[api/generate] Model ${candidateModel} failed:`, candidateErr?.message || candidateErr);
       }
+    }
+
+    if (!response) {
+      throw lastError || new Error('All Gemini model candidates failed');
     }
 
     let text = "";
@@ -83,7 +100,7 @@ export default async function handler(req: any, res: any) {
       text = response.candidates[0].content.parts[0].text;
     }
 
-    return res.status(200).json({ text, model: normalizedModel });
+    return res.status(200).json({ text, model: usedModel });
   } catch (error: any) {
     console.error("AI Generation Error:", error);
     return res.status(500).json({ error: error.message || 'Internal Server Error' });

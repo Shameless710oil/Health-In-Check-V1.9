@@ -75,6 +75,7 @@ const Report: React.FC<ReportProps> = ({ report, onReset, onHome, onNewScan }) =
   };
 
   const hasRecalls = simulatedRecalls && simulatedRecalls.length > 0;
+  const ingredientsDetected = Array.isArray(report.ingredients_detected) ? report.ingredients_detected : [];
   const handleExit = onHome || onReset || onNewScan || (() => {});
   const handleRestart = onReset || onNewScan || onHome || (() => {});
 
@@ -100,6 +101,30 @@ const Report: React.FC<ReportProps> = ({ report, onReset, onHome, onNewScan }) =
           <FlaskConical className="w-64 h-64 text-slate-950" />
         </div>
         <div className="absolute inset-0 bg-gradient-to-tr from-white/20 via-transparent to-transparent opacity-40"></div>
+      </div>
+
+      {/* INGREDIENTS READ FROM LABEL */}
+      <div className="mb-6 bg-slate-900/95 border border-emerald-500/30 rounded-[2.5rem] p-7 shadow-2xl">
+        <h3 className="text-xs font-black text-emerald-300 uppercase tracking-[0.25em] flex items-center gap-2 mb-4">
+          <FlaskConical className="w-4 h-4 text-emerald-400" />
+          <span>Ingredients Read From Label ({ingredientsDetected.length})</span>
+        </h3>
+        {ingredientsDetected.length === 0 ? (
+          <p className="text-xs text-slate-400 font-semibold italic">
+            No ingredients recorded for this scan.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {ingredientsDetected.map((ingredient, idx) => (
+              <span
+                key={`${ingredient}-${idx}`}
+                className="px-3 py-1.5 rounded-full bg-slate-950 text-slate-100 border border-white/20 text-xs font-bold tracking-wide shadow-sm"
+              >
+                {ingredient}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* VIRAL @FOOD.CHEM.INTEL STORY CARD CTA */}

@@ -14,8 +14,8 @@ import {
 import { fetchRealRecalls } from "./recallService";
 import { buildDeterministicReport } from "./deterministicAnalyzer";
 
-export const TEXT_MODEL = "gemini-2.5-flash";
-export const PRO_MODEL = "gemini-2.5-pro";
+export const TEXT_MODEL = "gemini-3-flash-preview";
+export const PRO_MODEL = "gemini-3-flash-preview";
 
 const logAgentAction = (step: string, data?: any) => {
   console.log(`%c[AGENT] %c${step}`, 'color: #22d3ee; font-weight: bold;', '', data || '');
@@ -101,10 +101,11 @@ export const runOCRAgent = async (imageBase64: string, localQrData: string | nul
 
   logAgentAction("Starting Visual Cortex OCR", { hasQr: !!localQrData });
   const prompt = `
-    Analyze this food product image for the Health-In-Check system. 
-    1. Identify Product Name.
-    2. Extract full ingredients list.
-    3. Decode any QR data if present.
+    STRICT LITERAL OCR ONLY:
+    1. Read ONLY the exact ingredient words physically printed and legible in the "Ingredients:" section of this food package image.
+    2. NEVER guess, infer, or assume typical ingredients from the product name, brand name, or front-of-package graphics.
+    3. If no printed "Ingredients:" list is clearly visible and legible in the image, you MUST return an empty array: "ingredients": [].
+    4. Identify the printed product name only if visible on the package (otherwise null), and decode any QR data if present (otherwise null).
   `;
 
   const schema: Schema = {
@@ -117,40 +118,71 @@ export const runOCRAgent = async (imageBase64: string, localQrData: string | nul
     required: ["ingredients"]
   };
 
-  try {
-    const response = await callAIEndpoint(
-      TEXT_MODEL,
-      {
-        parts: [
-          { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
-          { text: prompt }
-        ]
-      },
-      { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 },
-      1
-    );
+  const response = await callAIEndpoint(
+    TEXT_MODEL,
+    {
+      parts: [
+        { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+        { text: prompt }
+      ]
+    },
+    { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 },
+    1
+  );
 
-    const result = JSON.parse(response.text || "{}");
-    logAgentAction("OCR Extraction Complete", { count: result.ingredients?.length });
-    return result;
-  } catch (error) {
-    logAgentAction("OCR Agent Unavailable — Returning Offline Demo Fallback", error);
-    return {
-      productName: 'Scanned Grocery Item (Offline OCR Demo)',
-      ingredients: [
-        'Enriched Flour (Potassium Bromate)',
-        'High Fructose Corn Syrup',
-        'Red 40',
-        'BHT',
-        'Natural Flavors',
-        'Citric Acid'
-      ],
-      qrData: localQrData || undefined
-    };
+  const result = JSON.parse(response.text || "{}");
+  const cleanedIngredients = Array.isArray(result.ingredients)
+    ? result.ingredients
+        .map((item: unknown) => (typeof item === 'string' ? item.trim() : String(item ?? '').trim()))
+        .filter((item: string) => item.length > 0)
+    : [];
+
+  if (cleanedIngredients.length === 0) {
+    throw new Error(
+      "No readable 'Ingredients:' list was found in this photo. Please point your camera directly at the printed Ingredients list on the label."
+    );
   }
+
+  logAgentAction("OCR Extraction Complete", { count: cleanedIngredients.length });
+  return {
+    productName: typeof result.productName === 'string' && result.productName.trim() ? result.productName.trim() : undefined,
+    ingredients: cleanedIngredients,
+    qrData: typeof result.qrData === 'string' && result.qrData.trim() ? result.qrData.trim() : undefined
+  };
 };
 
-function mergeHazardsWithDeterministic(aiHazards: Hazard[] | undefined, detHazards: Hazard[]): Hazard[] {
+function normalizeGroundingText(input: string): string {
+  return String(input || '')
+    .toLowerCase()
+    .replace(/[-_/()[\],.;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isHazardGroundedInIngredients(hazardName: string, extractedIngredients: string[]): boolean {
+  const normalizedIngredients = (extractedIngredients || [])
+    .map(normalizeGroundingText)
+    .filter(Boolean)
+    .join(' ');
+  if (!normalizedIngredients) return false;
+
+  const normalizedName = normalizeGroundingText(hazardName);
+  if (!normalizedName) return false;
+
+  const escapedName = normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`(?:^|\\s)${escapedName}(?:$|\\s)`, 'i').test(normalizedIngredients)) {
+    return true;
+  }
+
+  const tokens = normalizedName.split(' ').filter(tok => tok.length >= 4);
+  return tokens.some(tok => normalizedIngredients.includes(tok));
+}
+
+function mergeHazardsWithDeterministic(
+  aiHazards: Hazard[] | undefined,
+  detHazards: Hazard[],
+  extractedIngredients: string[]
+): Hazard[] {
   const merged: Hazard[] = [];
   const detMap = new Map<string, Hazard>();
   for (const dh of detHazards) {
@@ -163,7 +195,9 @@ function mergeHazardsWithDeterministic(aiHazards: Hazard[] | undefined, detHazar
     const key = raw.name.toLowerCase();
     const matchedDet = detMap.get(key) || detHazards.find(d => key.includes(d.name.toLowerCase()) || d.name.toLowerCase().includes(key));
     if (matchedDet) {
-      seen.add(matchedDet.name.toLowerCase());
+      const detKey = matchedDet.name.toLowerCase();
+      if (seen.has(detKey)) continue;
+      seen.add(detKey);
       merged.push({
         name: matchedDet.name,
         risk_level: matchedDet.risk_level || raw.risk_level,
@@ -174,7 +208,8 @@ function mergeHazardsWithDeterministic(aiHazards: Hazard[] | undefined, detHazar
         citation_source: matchedDet.citation_source,
         citation_url: matchedDet.citation_url
       });
-    } else {
+    } else if (isHazardGroundedInIngredients(raw.name, extractedIngredients)) {
+      if (seen.has(key)) continue;
       seen.add(key);
       merged.push(raw);
     }
@@ -223,6 +258,7 @@ export const runAnalysisAgent = async (
     1. Use the Verified @food.chem.intel Database Matches as ground truth for hazards and regulatory status.
     2. Never fabricate or simulate FDA recalls — only report verified recalls from the provided OpenFDA list.
     3. Identify any additional hazardous additives, allergy warnings, drug-food interactions, nutrient blockers, and clean-label brand substitutions.
+    4. ONLY report ingredients and hazards strictly present in the provided ingredients list. NEVER invent unprinted ingredients.
   `;
 
   const schema: Schema = {
@@ -287,7 +323,7 @@ export const runAnalysisAgent = async (
     );
 
     const aiReport = JSON.parse(response.text || "{}");
-    const mergedHazards = mergeHazardsWithDeterministic(aiReport.hazards, deterministicReport.hazards);
+    const mergedHazards = mergeHazardsWithDeterministic(aiReport.hazards, deterministicReport.hazards, ingredients);
     const mergedAllergies = Array.from(
       new Set([...(deterministicReport.allergy_warnings || []), ...(aiReport.allergy_warnings || [])])
     );
@@ -295,7 +331,7 @@ export const runAnalysisAgent = async (
     const finalReport: AnalysisReport = {
       timestamp: Date.now(),
       product_name: aiReport.product_name || deterministicReport.product_name,
-      ingredients_detected: aiReport.ingredients_detected?.length ? aiReport.ingredients_detected : ingredients,
+      ingredients_detected: ingredients,
       hazards: mergedHazards,
       positives: aiReport.positives?.length ? aiReport.positives : deterministicReport.positives,
       blockers: deterministicReport.blockers.length ? deterministicReport.blockers : (aiReport.blockers || []),
