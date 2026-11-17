@@ -6,6 +6,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import generateHandler from '../api/generate';
 import checkoutHandler from '../api/checkout';
+import feedbackHandler from '../api/feedback';
 
 dotenv.config({ path: '.env.local' });
 
@@ -58,12 +59,23 @@ app.all('/api/checkout', async (req, res) => {
   }
 });
 
+app.post('/api/feedback', async (req, res) => {
+  try {
+    await feedbackHandler(req, res);
+  } catch (error) {
+    console.error('Local API Error (/api/feedback):', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal Server Error in Local Feedback API' });
+    }
+  }
+});
+
 const distPath = path.resolve(process.cwd(), 'dist');
 const indexHtmlPath = path.join(distPath, 'index.html');
 if (fs.existsSync(indexHtmlPath)) {
   app.use(express.static(distPath));
   app.use((req, res, next) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/assets/')) {
       return next();
     }
     return res.sendFile(indexHtmlPath);

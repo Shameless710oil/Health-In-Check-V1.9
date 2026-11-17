@@ -121,8 +121,10 @@ const Scanner: React.FC<ScannerProps> = ({ onScanStart, onScanComplete, onScanEr
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     processFile(file);
+    // Reset input value immediately so selecting or shooting a photo again always triggers onChange
+    e.target.value = '';
   };
 
   const scanForQR = (imageSrc: string): Promise<string | null> => {
@@ -161,27 +163,35 @@ const Scanner: React.FC<ScannerProps> = ({ onScanStart, onScanComplete, onScanEr
     reader.onloadstart = () => onScanStart?.();
     
     reader.onload = async (e) => {
-      const rawResult = e.target?.result as string;
-      const compressedResult = await compressImageDataUrl(rawResult, MAX_IMAGE_DIMENSION, JPEG_QUALITY);
-      setPreview(compressedResult);
-      
-      // Extract base64 data only (remove "data:image/jpeg;base64," prefix)
-      const base64Data = compressedResult.includes(',')
-        ? compressedResult.split(',')[1]
-        : compressedResult;
-      
-      // Attempt local QR Scan
-      let detectedQR = null;
       try {
-        detectedQR = await scanForQR(rawResult);
-        if (detectedQR) {
-          console.log("Local QR Detected:", detectedQR);
+        const rawResult = e.target?.result as string;
+        if (!rawResult) {
+          onScanError?.("Failed to read image data.");
+          return;
         }
-      } catch (err) {
-        console.warn("Local QR detection failed", err);
-      }
+        const compressedResult = await compressImageDataUrl(rawResult, MAX_IMAGE_DIMENSION, JPEG_QUALITY);
+        setPreview(compressedResult);
+        
+        // Extract base64 data only (remove "data:image/jpeg;base64," prefix)
+        const base64Data = compressedResult.includes(',')
+          ? compressedResult.split(',')[1]
+          : compressedResult;
+        
+        // Attempt local QR Scan
+        let detectedQR = null;
+        try {
+          detectedQR = await scanForQR(rawResult);
+          if (detectedQR) {
+            console.log("Local QR Detected:", detectedQR);
+          }
+        } catch (err) {
+          console.warn("Local QR detection failed", err);
+        }
 
-      onScanComplete(base64Data, detectedQR);
+        onScanComplete(base64Data, detectedQR);
+      } catch (err: any) {
+        onScanError?.(err?.message || "Failed to process image file.");
+      }
     };
 
     reader.onerror = () => onScanError?.("Failed to read image file.");

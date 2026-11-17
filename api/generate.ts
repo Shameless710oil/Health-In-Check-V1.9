@@ -3,6 +3,19 @@ import { GoogleGenAI } from "@google/genai";
 const rateLimitCache = new Map<string, { count: number; startTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 20;
+const MODEL_TIMEOUT_MS = 35_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Model ${label} timed out after ${ms}ms`)), ms);
+    })
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
 
 export function normalizeGeminiModel(model?: string): string {
   const m = String(model || '').trim().toLowerCase();
@@ -65,7 +78,7 @@ export default async function handler(req: any, res: any) {
     const ai = new GoogleGenAI({ apiKey });
     const normalizedModel = normalizeGeminiModel(model);
     const fallbackChain = Array.from(
-      new Set([normalizedModel, 'gemini-3-flash-preview', 'gemini-3.5-flash', 'gemini-3.8-flash'])
+      new Set([normalizedModel, 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-3.5-flash'])
     );
 
     let response: any;
@@ -74,11 +87,15 @@ export default async function handler(req: any, res: any) {
 
     for (const candidateModel of fallbackChain) {
       try {
-        response = await ai.models.generateContent({
-          model: candidateModel,
-          contents,
-          config
-        });
+        response = await withTimeout(
+          ai.models.generateContent({
+            model: candidateModel,
+            contents,
+            config
+          }),
+          MODEL_TIMEOUT_MS,
+          candidateModel
+        );
         usedModel = candidateModel;
         break;
       } catch (candidateErr: any) {

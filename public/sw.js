@@ -1,5 +1,5 @@
-const SHELL_CACHE = 'fci-pwa-shell-v2';
-const DATA_CACHE = 'fci-pwa-data-v2';
+const SHELL_CACHE = 'fci-pwa-shell-v3';
+const DATA_CACHE = 'fci-pwa-data-v3';
 const SHELL_ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -43,8 +43,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first falling back to network for static shell & assets
+  // Network-first for HTML/navigation so Vite hashed asset references stay fresh
   if (url.origin === self.location.origin) {
+    if (req.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+      event.respondWith(
+        fetch(req)
+          .then((res) => {
+            if (res && res.status === 200) {
+              const clone = res.clone();
+              caches.open(SHELL_CACHE).then((cache) => cache.put(req, clone));
+            }
+            return res;
+          })
+          .catch(() => caches.match(req))
+      );
+      return;
+    }
+
+    // Cache-first falling back to network for immutable hashed assets
     event.respondWith(
       caches.match(req).then((cached) => {
         const networkFetch = fetch(req)

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { supabase } from '../services/supabaseClient';
+import { isSupabaseConfigured, supabase } from '../services/supabaseClient';
 import { X, MessageSquare, Bug, Lightbulb, Send, Loader2, CheckCircle2 } from 'lucide-react';
 
 interface BetaFeedbackModalProps {
@@ -13,26 +13,48 @@ const BetaFeedbackModal: React.FC<BetaFeedbackModalProps> = ({ isOpen, onClose }
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
+  const submitViaApi = async (feedbackType: 'BUG' | 'FEATURE' | 'OTHER', feedbackMessage: string) => {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: feedbackType, message: feedbackMessage })
+    });
+    if (!response.ok) {
+      throw new Error(`Feedback API returned ${response.status}`);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    const trimmed = message.trim();
+    if (!trimmed) return;
 
     setLoading(true);
+    setErrorMsg(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
+      let submittedToSupabase = false;
+      if (isSupabaseConfigured) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error } = await supabase.from('beta_feedback').insert({
+            user_id: user.id,
+            type,
+            message: trimmed,
+            rating: 5
+          });
+          if (error) throw error;
+          submittedToSupabase = true;
+        }
+      }
 
-      const { error } = await supabase.from('beta_feedback').insert({
-        user_id: user.id,
-        type,
-        message,
-        rating: 5 // Default, can expand later
-      });
+      if (!submittedToSupabase) {
+        await submitViaApi(type, trimmed);
+      }
 
-      if (error) throw error;
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
@@ -41,7 +63,7 @@ const BetaFeedbackModal: React.FC<BetaFeedbackModalProps> = ({ isOpen, onClose }
       }, 2000);
     } catch (err) {
       console.error(err);
-      alert("Failed to submit feedback. Please try again.");
+      setErrorMsg("Failed to submit feedback. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -106,6 +128,12 @@ const BetaFeedbackModal: React.FC<BetaFeedbackModalProps> = ({ isOpen, onClose }
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:border-emerald-500 outline-none h-32 resize-none"
               />
             </div>
+
+            {errorMsg && (
+              <p className="text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                {errorMsg}
+              </p>
+            )}
 
             <button
               type="submit"
