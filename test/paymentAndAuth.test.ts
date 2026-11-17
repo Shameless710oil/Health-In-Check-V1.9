@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserTier } from '../types';
+import { PLANS } from '../constants';
 import { canPerformAction, incrementUsage } from '../services/authService';
 import { getUserProfile, saveUserProfile } from '../services/storageService';
 import {
@@ -32,6 +33,21 @@ describe('Task 3: 4-Tier Monetization, 30-Day Pass Expiration & Payment Guard', 
     const afterPass = await canPerformAction('SCAN');
     expect(afterPass.allowed).toBe(true);
     expect(afterPass.limit).toBe(50);
+  });
+
+  it('allows 3 generations/day in Guest FREE mode before blocking on the 4th', async () => {
+    expect(PLANS[UserTier.FREE].generationsPerDay).toBe(3);
+    expect(PLANS[UserTier.FREE].features).toContain('3 Meal/Workout Ideas per day');
+
+    for (let i = 0; i < 3; i++) {
+      const check = await canPerformAction('GENERATE');
+      expect(check.allowed).toBe(true);
+      await incrementUsage('GENERATE');
+    }
+
+    const blocked = await canPerformAction('GENERATE');
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.limit).toBe(3);
   });
 
   it('automatically downgrades an expired 30-Day PASS back to FREE tier', async () => {

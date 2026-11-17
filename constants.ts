@@ -7,13 +7,13 @@ export const PLANS: Record<UserTier, SubscriptionPlan> = {
     price: "Free",
     priceValue: 0,
     scansPerDay: 3,
-    generationsPerDay: 1,
+    generationsPerDay: 3,
     adFree: false,
     billingPeriod: 'free',
     features: [
       "Basic Ingredient Analysis",
       "3 Scans per day",
-      "1 Meal/Workout Idea per day",
+      "3 Meal/Workout Ideas per day",
       "Shareable @food.chem.intel Story Cards"
     ]
   },
