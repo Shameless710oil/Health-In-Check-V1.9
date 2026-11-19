@@ -9,6 +9,7 @@ describe('Task 2: Hybrid Gemini 3 Service, Literal OCR & Anti-Hallucination Guar
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -159,5 +160,34 @@ describe('Task 2: Hybrid Gemini 3 Service, Literal OCR & Anti-Hallucination Guar
     expect(report.ingredients_detected).not.toContain('Potassium Bromate');
     expect(report.ingredients_detected).not.toContain('Red 40');
     expect(report.hazards.map(h => h.name)).toEqual(['Carrageenan']);
+  });
+
+  it('retries runOCRAgent on transient 503 server errors and succeeds on retry', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'Model temporarily unavailable' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          text: JSON.stringify({
+            productName: 'Broth',
+            ingredients: ['Water', 'Sea Salt']
+          })
+        })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ocrPromise = runOCRAgent('base64data', null);
+    await vi.advanceTimersByTimeAsync(2000);
+    const result = await ocrPromise;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.productName).toBe('Broth');
+    expect(result.ingredients).toEqual(['Water', 'Sea Salt']);
   });
 });

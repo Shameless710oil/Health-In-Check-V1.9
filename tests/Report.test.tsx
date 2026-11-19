@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import Report from '../components/Report';
 import { AnalysisReport } from '../types';
 

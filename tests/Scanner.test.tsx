@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import Scanner, { SAMPLE_GROCERY_PRESETS, compressImageDataUrl } from '../components/Scanner';
 
 describe('Scanner Component', () => {

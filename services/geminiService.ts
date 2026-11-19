@@ -127,7 +127,7 @@ export const runOCRAgent = async (imageBase64: string, localQrData: string | nul
       ]
     },
     { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 },
-    1
+    3
   );
 
   const result = JSON.parse(response.text || "{}");
